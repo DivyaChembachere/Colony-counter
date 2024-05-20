@@ -7,6 +7,8 @@ from skimage.feature import blob_dog, blob_log, blob_doh, peak_local_max
 from math import sqrt
 import numpy as np
 import pandas as pd
+from matplotlib.patches import Rectangle
+import cv2
 
 from scipy import ndimage
 
@@ -182,7 +184,8 @@ class Counter():
         plot_bboxs(bbox_list=self.props["bboxs"], ax=ax)
         plot_texts(text_list=self.props["names"], cordinate_list=self.props["bboxs"], ax=ax, shift=[0, -60])
         plt.show()
-
+    
+    
     def detect_area(self, n_samples, white_threshold=0.7, use_binelized_image_for_edge_detection=True, verbose=True):
         """
         The method detects sample area in input image.
@@ -408,6 +411,127 @@ class Counter():
             easy_sub_plot(self.sample_image_for_quantification, 4, self.props["names"],  {"vmin":0, "vmax": vmax})
             plt.show()
 
+    def plot_detected_colonies(self, plot="final", col_num=3, vmax=None, save=None, overlay_circle=True, highlight_color="red"):
+        """
+        Function to plot detected colonies detection.
+
+        Args:
+            plot_raw (bool) : if True, the white-black image will be shown. If it is not True, inversed image will be used for the plotting.
+
+            col_num (int): the number of column in subplot.
+
+            highlight_color (str): the color for highlighting detected colonies.
+
+        """
+        if plot == "raw":
+            image_list = self.sample_image_bw
+        elif plot == "final":
+            image_list = self.sample_image_for_quantification
+        elif plot == "raw_inversed":
+            image_list = self.sample_image_inversed_bw
+        else:
+            raise ValueError("plot argment is wrong.")
+
+        if vmax is None:
+            vmax = _get_vmax(image_list)
+            print("vmax: ", vmax)
+        idx = 1
+
+        for i, image in enumerate(image_list):
+
+            k = (i % col_num + 1)
+            ax = plt.subplot(1, col_num, k)
+            blobs = self.detected_blobs[i]
+            
+            if plot == "raw":
+                plt.imshow(image, cmap="gray", vmin=0, vmax=vmax)
+                if overlay_circle:
+                    plot_circles(circle_list=blobs, ax=ax, args={"color": highlight_color, "alpha": 0.4})
+            
+            else:
+                plt.imshow(image, vmin=0, vmax=vmax)
+                if overlay_circle:
+                    plot_circles(circle_list=blobs, ax=ax,  args={"color": highlight_color, "alpha": 0.4})
+            
+            name = self.props["names"][i]
+            plt.title(f"{name}: {len(blobs)} colonies")
+            if (k == col_num) | (i == len(image_list)):
+                if save is not None:
+                    plt.savefig(f"{save}_{idx}.png", transparent=True)
+                plt.show()
+                idx += 1
+    
+    # def plot_detected_colonies(self, plot="final", col_num=3, vmax=None, save=None, overlay_shape="circle", highlight_color="red"):
+    #     """
+    #     Function to plot detected colonies detection with bounding boxes or circles,
+    #     excluding the influence of green annotation circles.
+
+    #     Args:
+    #         plot_raw (bool) : if True, the white-black image will be shown. If it is not True, inversed image will be used for the plotting.
+
+    #         col_num (int): the number of column in subplot.
+
+    #         overlay_shape (str): "box" or "circle" to specify the shape for highlighting colonies.
+
+    #         highlight_color (str): the color for highlighting detected colonies.
+
+    #     """
+    #     if plot == "raw":
+    #         image_list = self.sample_image_bw
+    #     elif plot == "final":
+    #         image_list = self.sample_image_for_quantification
+    #     elif plot == "raw_inversed":
+    #         image_list = self.sample_image_inversed_bw
+    #     else:
+    #         raise ValueError("plot argument is wrong.")
+
+    #     if vmax is None:
+    #         vmax = _get_vmax(image_list)
+    #         print("vmax: ", vmax)
+    #     idx = 1
+
+    #     for i, image in enumerate(image_list):
+
+    #         k = (i % col_num + 1)
+    #         ax = plt.subplot(1, col_num, k)
+    #         blobs = self.detected_blobs[i]
+
+    #         # Preprocess the image to isolate black dots (optional, adapt based on your image properties)
+    #         preprocessed_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)  # Convert to grayscale
+    #         _, preprocessed_image = cv2.threshold(preprocessed_image, 127, 255, cv2.THRESH_BINARY)  # Basic thresholding
+
+    #         # Plot the original image (you might want to plot the preprocessed image instead)
+    #         plt.imshow(image, cmap="gray", vmin=0, vmax=vmax)
+
+    #         if overlay_shape == "box":
+    #             # Refine detected blobs based on preprocessed image (optional)
+    #             refined_blobs = []
+    #             for blob in blobs:
+    #                 # Check if blob center falls within a black dot in the preprocessed image
+    #                 x, y = blob[0], blob[1]  # Assuming blob[0] and blob[1] are center coordinates
+    #                 if preprocessed_image[y, x] == 0:  # Black pixel indicates a potential cell
+    #                     refined_blobs.append(blob)
+
+    #             # Get bounding boxes from refined blobs
+    #             bboxes = np.array([blob[0] - blob[2], blob[1] - blob[2], 2 * blob[2], 2 * blob[2]])
+
+    #             # Draw bounding boxes
+    #             for bbox in bboxes:
+    #                 plt.rectangle(bbox[:2], bbox[2], bbox[3], color=highlight_color, fill=False, linewidth=2)
+
+    #         elif overlay_shape == "circle":
+    #             # Refine detected blobs based on preprocessed image (optional, similar to box case)
+
+    #             # Overlay circles for detected colonies (using refined blobs or original blobs)
+    #             for blob in refined_blobs:  # Use refined_blobs if you implemented refinement
+    #                 circle = plt.Circle(xy=(blob[0], blob[1]), radius=blob[2], color=highlight_color)
+    #                 ax.add_patch(circle)
+    #                 circle.set_clip_box(ax.bbox)
+    #                 circle.set_alpha(np.random.rand())  # Optional: add transparency to circles
+
+    #         else:
+    #             raise ValueError("overlay_shape argument must be 'box' or 'circle")
+
     def detect_colonies(self, min_size=5, max_size=15, threshold=0.02, num_sigma=10, overlap=0.5, verbose=True):
         """
         Function for colony detection.
@@ -428,8 +552,6 @@ class Counter():
             verbose (bool): if True, the resutls wil be shown.
 
         """
-
-
 
         self.detected_blobs = []
         for image in self.sample_image_for_quantification:
@@ -455,52 +577,53 @@ class Counter():
         if verbose:
             self.plot_detected_colonies()
 
-    def plot_detected_colonies(self, plot="final", col_num=3, vmax=None, save=None, overlay_circle=True):
-        """
-        Function to plot detected colonies detection.
+    # def plot_detected_colonies(self, plot="final", col_num=3, vmax=None, save=None, overlay_circle=True):
+    #     """
+    #     Function to plot detected colonies detection.
 
-        Args:
-            plot_raw (bool) : if True, the white-black image will be shown. If it is not True, inversed image will be used for the plotting.
+    #     Args:
+    #         plot_raw (bool) : if True, the white-black image will be shown. If it is not True, inversed image will be used for the plotting.
 
-            col_num (int): the number of column in subplot.
+    #         col_num (int): the number of column in subplot.
 
-        """
-        if plot == "raw":
-            image_list = self.sample_image_bw
-        elif plot == "final":
-            image_list = self.sample_image_for_quantification
-        elif plot == "raw_inversed":
-            image_list = self.sample_image_inversed_bw
-        else:
-            raise ValueError("plot argment is wrong.")
+    #     """
+    #     if plot == "raw":
+    #         image_list = self.sample_image_bw
+    #     elif plot == "final":
+    #         image_list = self.sample_image_for_quantification
+    #     elif plot == "raw_inversed":
+    #         image_list = self.sample_image_inversed_bw
+    #     else:
+    #         raise ValueError("plot argment is wrong.")
 
-        if vmax is None:
-            vmax = _get_vmax(image_list)
-            print("vmax: ", vmax)
-        idx = 1
+    #     if vmax is None:
+    #         vmax = _get_vmax(image_list)
+    #         print("vmax: ", vmax)
+    #     idx = 1
 
-        for i, image in enumerate(image_list):
+    #     for i, image in enumerate(image_list):
 
-            k = (i%col_num + 1)
-            ax = plt.subplot(1, col_num, k)
-            blobs = self.detected_blobs[i]
-            if plot == "raw":
-                plt.imshow(image, cmap="gray", vmin=0, vmax=vmax)
-                if overlay_circle:
-                    plot_circles(circle_list=blobs, ax=ax, args={"color": "black"})
+    #         k = (i%col_num + 1)
+    #         ax = plt.subplot(1, col_num, k)
+    #         blobs = self.detected_blobs[i]
+    #         if plot == "raw":
+    #             plt.imshow(image, cmap="gray", vmin=0, vmax=vmax)
+    #             if overlay_circle:
+    #                 plot_circles(circle_list=blobs, ax=ax, args={"color": "black"})
 
-            else:
-                plt.imshow(image, vmin=0, vmax=vmax)
-                if overlay_circle:
-                    plot_circles(circle_list=blobs, ax=ax)
+    #         else:
+    #             plt.imshow(image, vmin=0, vmax=vmax)
+    #             if overlay_circle:
+    #                 plot_circles(circle_list=blobs, ax=ax)
 
-            name = self.props["names"][i]
-            plt.title(f"{name}: {len(blobs)} colonies")
-            if (k == col_num) | (i == len(image_list)):
-                if save is not None:
-                    plt.savefig(f"{save}_{idx}.png", transparent=True)
-                plt.show()
-                idx += 1
+    #         name = self.props["names"][i]
+    #         plt.title(f"{name}: {len(blobs)} colonies")
+    #         if (k == col_num) | (i == len(image_list)):
+    #             if save is not None:
+    #                 plt.savefig(f"{save}_{idx}.png", transparent=True)
+    #             plt.show()
+    #             idx += 1
+    
 
 def _get_vmax(image_list):
     vmax = []
